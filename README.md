@@ -1,1 +1,7 @@
-# Determining-the-Popularity-of-Geolocation-for-ATM-Placement
+# Determining-the-Popularity-of-Geolocation-for-ATM-Placement  
+ 
+| __Тема проекта__ | Определение популярности геолокации для размещения банкомата |
+|:----|:----|
+| __Куратор__ | Александра Ковалева (@ak0va) |
+| __Участники__ | 1. Николай Цуканов — @ntsukanov, <git_url><br> 2. Ильдус Исхаков — @Aculanma, [Aculanma](https://github.com/Aculanma/Aculanma)<br> 3. Кирилл Устименко — @diefrein, <git_url><br> 4. Анастасия Волокитина — @volokitinaa, <git_url><br> |
+| __Описание проекта__ | Ознакомление с данными, предобработка данных, решение задачи прогнозирования индекса популярности банкомата, разработка интерфейсного решения | 
