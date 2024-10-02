@@ -1,4 +1,4 @@
-# Determining-the-Popularity-of-Geolocation-for-ATM-Placement  
+# determining-the-popularity-of-geolocation-for-atm-placement  
  
 | __Тема проекта__ | Определение популярности геолокации для размещения банкомата |
 |:----|:----|
