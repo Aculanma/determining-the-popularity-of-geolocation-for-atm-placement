@@ -4,10 +4,22 @@ import requests
 import os
 import io
 import streamlit.components.v1 as components
-
+import logging as log
+ 
 # URL FastAPI, который будет принимать файл и возвращать результат
-backend_url = os.environ.get('HOME', "localhost:8080")
+backend_host = os.environ.get('BACKEND_HOST', "localhost")
+backend_port = os.environ.get('BACKEND_PORT', "8080")
+backend_url = f"http://{backend_host}:{backend_port}"
+
 resources_path = "streamlit/resources/"
+
+file_log = log.FileHandler('streamlit_log.log')
+console_out = log.StreamHandler()
+
+log.basicConfig(handlers=(file_log, console_out), 
+                    format='[%(asctime)s | %(levelname)s]: %(message)s', 
+                    datefmt='%m.%d.%Y %H:%M:%S',
+                    level=log.INFO)
 
 # Ожидаемые столбцы в CSV
 expected_columns = {
@@ -99,7 +111,7 @@ def main():
             # Отправляем файл на обработку в FastAPI
             csv_data = df.to_csv(index=False).encode('windows-1251')
             files = {"file": ("file.csv", csv_data)}
-            response = requests.post(backend_url, files=files)
+            response = requests.post(f"{backend_url}/api/v1/predict/", files=files)
 
             if response.status_code == 200:
                 st.success("Предсказания успешно выполнены!")
@@ -122,4 +134,6 @@ def main():
         )
 
 if __name__ == "__main__":
+    log.info("Starting streamlit application")
+    log.info("backend_url = [%s]", backend_url)
     main()
