@@ -64,3 +64,5 @@ urllib3==2.2.3
 uvicorn==0.34.0
 watchdog==6.0.0
 zipp==3.21.0
+nbqa==1.9.1
+flake8==7.1.1
