@@ -34,7 +34,7 @@ def healthcheck():
     return 'Health - OK'
 
 @app.post("/api/v1/predict/")
-async def predict(file: UploadFile = File(...)):
+async def predict(file: UploadFile = File(...)) -> StreamingResponse:
     try:
         # Чтение файла
         data = file.file.read()
