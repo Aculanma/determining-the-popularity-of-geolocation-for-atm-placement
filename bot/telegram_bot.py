@@ -21,11 +21,15 @@ BACKEND_URL = f"http://{BACKEND_HOST}:{BACKEND_PORT}"
 # Model metrics from training
 MODEL_METRICS = {
     'linear_model': {
-        'MAE': 0.066,
-        'MAPE': 1.982,
-        'R2': 0.045
+        'MAE': 0.036,
+        'MAPE': 1.90,
+        'R2': 0.71
     },
-   
+    'catboost_model': {
+        'MAE': 0.034,
+        'MAPE': 1.94,
+        'R2': 0.74
+    },
     'neural_network': {
         'MAE': 0.032,
         'MAPE': 2.451,
@@ -34,7 +38,7 @@ MODEL_METRICS = {
 }
 
 # Available models
-AVAILABLE_MODELS = ['linear_model', 'neural_network']
+AVAILABLE_MODELS = ['linear_model', 'neural_network', 'catboost_model']
 
 # Store user's selected model
 user_states = {}
@@ -42,9 +46,9 @@ user_states = {}
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Send a message when the command /start is issued."""
     welcome_message = (
-        "Welcome to the ATM Popularity Prediction Bot!\n\n"
-        "This bot uses machine learning models to predict ATM popularity based on various features.\n\n"
-        "Available models and their metrics:\n"
+        "Добро пожаловать в бот предсказания популярности банкоматов!\n\n"
+        "Этот бот использует модели машинного обучения для предсказания популярности банкоматов на основе различных параметров.\n\n"
+        "Доступные модели и их метрики:\n"
     )
     
     for model_name, metrics in MODEL_METRICS.items():
@@ -53,9 +57,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_message += f"MAPE: {metrics['MAPE']:.3f}\n"
         welcome_message += f"R2: {metrics['R2']:.3f}\n"
     
-    welcome_message += "\nTo get started:\n"
-    welcome_message += "1. Use /select_model to choose a prediction model\n"
-    welcome_message += "2. Send a CSV file with features to get predictions\n"
+    welcome_message += "\nЧтобы начать:\n"
+    welcome_message += "1. Используйте /select_model для выбора модели предсказания\n"
+    welcome_message += "2. Отправьте CSV файл с параметрами для получения предсказаний\n"
     
     await update.message.reply_text(welcome_message)
 
@@ -66,7 +70,7 @@ async def select_model(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton(model, callback_data=f"model_{model}")])
     
     reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text('Please select a model:', reply_markup=reply_markup)
+    await update.message.reply_text('Пожалуйста, выберите модель:', reply_markup=reply_markup)
 
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle button callbacks."""
@@ -89,26 +93,26 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         user_states[user_id] = {"selected_model": model_name}
                         
                         await query.edit_message_text(
-                            f"Selected model: {model_name}\n\n"
-                            f"Model metrics:\n"
+                            f"Выбрана модель: {model_name}\n\n"
+                            f"Метрики модели:\n"
                             f"MAE: {MODEL_METRICS[model_name]['MAE']:.3f}\n"
                             f"MAPE: {MODEL_METRICS[model_name]['MAPE']:.3f}\n"
                             f"R2: {MODEL_METRICS[model_name]['R2']:.3f}\n\n"
-                            "Now you can send a CSV file with features to get predictions."
+                            "Теперь вы можете отправить CSV файл с параметрами для получения предсказаний."
                         )
                     else:
                         error_text = await response.text()
                         await query.edit_message_text(
-                            f"Error changing model:\n"
-                            f"Status code: {response.status}\n"
-                            f"Error: {error_text}\n\n"
-                            "Please try selecting the model again."
+                            f"Ошибка при смене модели:\n"
+                            f"Код статуса: {response.status}\n"
+                            f"Ошибка: {error_text}\n\n"
+                            "Пожалуйста, попробуйте выбрать модель снова."
                         )
             except Exception as e:
                 await query.edit_message_text(
-                    f"Error connecting to the backend server:\n"
+                    f"Ошибка подключения к серверу:\n"
                     f"{str(e)}\n\n"
-                    "Please try selecting the model again."
+                    "Пожалуйста, попробуйте выбрать модель снова."
                 )
 
 async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -117,7 +121,7 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     if user_id not in user_states or "selected_model" not in user_states[user_id]:
         await update.message.reply_text(
-            "Please select a model first using /select_model command."
+            "Пожалуйста, сначала выберите модель с помощью команды /select_model."
         )
         return
     
@@ -139,15 +143,15 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if missing_columns:
             await update.message.reply_text(
-                f"Error: Missing required columns: {', '.join(missing_columns)}\n"
-                "Please ensure your CSV file contains all required columns."
+                f"Ошибка: Отсутствуют обязательные столбцы: {', '.join(missing_columns)}\n"
+                "Пожалуйста, убедитесь, что ваш CSV файл содержит все необходимые столбцы."
             )
             return
 
         # Send processing message
         processing_message = await update.message.reply_text(
-            f"Processing your file with {user_states[user_id]['selected_model']} model...\n"
-            "This may take a few moments."
+            f"Обработка вашего файла с помощью модели {user_states[user_id]['selected_model']}...\n"
+            "Это может занять несколько моментов."
         )
         
         # Prepare the file for API request
@@ -173,10 +177,10 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     
                     # Update processing message with results
                     await processing_message.edit_text(
-                        f"Predictions completed!\n\n"
-                        f"Model used: {user_states[user_id]['selected_model']}\n"
-                        f"Number of predictions: {len(predictions_df)}\n\n"
-                        "You can download the results using the button below."
+                        f"Предсказания завершены!\n\n"
+                        f"Использованная модель: {user_states[user_id]['selected_model']}\n"
+                        f"Количество предсказаний: {len(predictions_df)}\n\n"
+                        "Вы можете скачать результаты, используя кнопку ниже."
                     )
                     
                     # Send predictions file - ensure windows-1251 encoding
@@ -184,20 +188,20 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     predictions_file.name = "predictions.csv"
                     await update.message.reply_document(
                         document=predictions_file,
-                        caption="Here are your predictions!"
+                        caption="Вот ваши предсказания!"
                     )
                 else:
                     error_text = await response.text()
                     await processing_message.edit_text(
-                        f"Error getting predictions:\n"
-                        f"Status code: {response.status}\n"
-                        f"Error: {error_text}"
+                        f"Ошибка при получении предсказаний:\n"
+                        f"Код статуса: {response.status}\n"
+                        f"Ошибка: {error_text}"
                     )
     except Exception as e:
-        logger.error(f"Error processing CSV file: {str(e)}")
+        logger.error(f"Ошибка обработки CSV файла: {str(e)}")
         await update.message.reply_text(
-            f"Error processing your file:\n{str(e)}\n\n"
-            "Please make sure your CSV file is properly formatted and try again."
+            f"Ошибка обработки вашего файла:\n{str(e)}\n\n"
+            "Пожалуйста, убедитесь, что ваш CSV файл правильно отформатирован и попробуйте снова."
         )
 
 def main():

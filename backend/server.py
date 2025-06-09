@@ -1,4 +1,6 @@
-from model import create_model, preprocess_data
+from catboost import CatBoostRegressor
+from sklearn.linear_model import LinearRegression
+from model import Netmodel_52, create_model, preprocess_data_catboost_model, preprocess_data_linear_model, preprocess_data_neural_network
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -22,7 +24,8 @@ app = FastAPI()
 
 # Подгружаем модель и OneHotEncoder
 linear_model = create_model(model_type="linear_model")
-# neural_model = create_model(model_type="neural_network")
+neural_model = create_model(model_type="neural_network")
+catboost_model = create_model(model_type="catboost_model")
 active_model = linear_model
 
 ohe_path = os.path.join(os.path.dirname(__file__), "resources/onehotencoder.pkl")
@@ -30,7 +33,7 @@ with open(ohe_path, 'rb') as ohe_file:
     ohe = pickle.load(ohe_file)
 
 class ModelType(BaseModel):
-    model_type: Literal["linear_model", "neural_network"]
+    model_type: Literal["linear_model", "neural_network", "catboost_model"]
 
 @app.get("/api/v1/healthcheck/")
 def healthcheck():
@@ -50,7 +53,6 @@ async def change_model(model_data: ModelType):
     Raises:
         HTTPException: If there's an error loading the model
     """
-    global active_model
     try:
         active_model = create_model(model_type=model_data.model_type)
         log.info(f"Successfully switched to {model_data.model_type} model")
@@ -76,7 +78,14 @@ async def predict(file: UploadFile = File(...)) -> StreamingResponse:
             raise HTTPException(status_code=422, detail=f"Ошибка в данных CSV: {str(e)}")
 
         # Предобработка данных
-        processed_data = preprocess_data(df, ohe)
+        if isinstance(active_model, LinearRegression):
+            processed_data = preprocess_data_linear_model(df, ohe)
+        elif isinstance(active_model, Netmodel_52):
+            processed_data = preprocess_data_neural_network(df)
+        elif isinstance(active_model, CatBoostRegressor):
+            processed_data = preprocess_data_catboost_model(df)
+        else:
+            processed_data = preprocess_data_linear_model(df, ohe)
         log.debug("Data processed")
 
         # Предсказания
