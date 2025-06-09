@@ -1,4 +1,4 @@
-FROM python:3.12-slim as builder
+FROM python:3.11-slim as builder
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN pip install --user torch==2.2.0 --index-url https://download.pytorch.org/whl
 RUN pip install --user -r requirements.txt
 
 # Final stage (smaller image)
-FROM python:3.12-slim
+FROM python:3.11-slim
 
 WORKDIR /app
 
