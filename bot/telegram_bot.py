@@ -1,14 +1,9 @@
 import os
 import logging
 import pandas as pd
-import numpy as np
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
-from sklearn.linear_model import Ridge
-import joblib
 import io
-import requests
 import aiohttp
 
 # Configure logging
@@ -30,12 +25,8 @@ MODEL_METRICS = {
         'MAPE': 1.982,
         'R2': 0.045
     },
-    'linear_model_scaled': {
-        'MAE': 0.066,
-        'MAPE': 1.982,
-        'R2': 0.045
-    },
-    'ridge': {
+   
+    'neural_network': {
         'MAE': 0.032,
         'MAPE': 2.451,
         'R2': 0.787
@@ -43,7 +34,7 @@ MODEL_METRICS = {
 }
 
 # Available models
-AVAILABLE_MODELS = ['linear_model', 'linear_model_scaled', 'ridge']
+AVAILABLE_MODELS = ['linear_model', 'neural_network']
 
 # Store user's selected model
 user_states = {}
@@ -85,16 +76,40 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if query.data.startswith("model_"):
         model_name = query.data.replace("model_", "")
         user_id = update.effective_user.id
-        user_states[user_id] = {"selected_model": model_name}
         
-        await query.edit_message_text(
-            f"Selected model: {model_name}\n\n"
-            f"Model metrics:\n"
-            f"MAE: {MODEL_METRICS[model_name]['MAE']:.3f}\n"
-            f"MAPE: {MODEL_METRICS[model_name]['MAPE']:.3f}\n"
-            f"R2: {MODEL_METRICS[model_name]['R2']:.3f}\n\n"
-            "Now you can send a CSV file with features to get predictions."
-        )
+        # Call the backend API to change the model
+        async with aiohttp.ClientSession() as session:
+            try:
+                async with session.post(
+                    f"{BACKEND_URL}/api/v1/change_model/",
+                    json={"model_type": model_name}
+                ) as response:
+                    if response.status == 200:
+                        # Update user state only if model change was successful
+                        user_states[user_id] = {"selected_model": model_name}
+                        
+                        await query.edit_message_text(
+                            f"Selected model: {model_name}\n\n"
+                            f"Model metrics:\n"
+                            f"MAE: {MODEL_METRICS[model_name]['MAE']:.3f}\n"
+                            f"MAPE: {MODEL_METRICS[model_name]['MAPE']:.3f}\n"
+                            f"R2: {MODEL_METRICS[model_name]['R2']:.3f}\n\n"
+                            "Now you can send a CSV file with features to get predictions."
+                        )
+                    else:
+                        error_text = await response.text()
+                        await query.edit_message_text(
+                            f"Error changing model:\n"
+                            f"Status code: {response.status}\n"
+                            f"Error: {error_text}\n\n"
+                            "Please try selecting the model again."
+                        )
+            except Exception as e:
+                await query.edit_message_text(
+                    f"Error connecting to the backend server:\n"
+                    f"{str(e)}\n\n"
+                    "Please try selecting the model again."
+                )
 
 async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Handle incoming CSV files."""
@@ -111,8 +126,12 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         file = await context.bot.get_file(update.message.document)
         file_bytes = await file.download_as_bytearray()
         
-        # Read CSV to validate columns
-        df = pd.read_csv(io.BytesIO(file_bytes))
+        # Read CSV with windows-1251 encoding
+        try:
+            df = pd.read_csv(io.BytesIO(file_bytes), encoding='windows-1251')
+        except UnicodeDecodeError:
+            # If windows-1251 fails, try utf-8
+            df = pd.read_csv(io.BytesIO(file_bytes), encoding='utf-8')
         
         # Validate required columns
         required_columns = ['lat', 'long', 'settlement', 'street_name', 'settlement_count', 'atm_group', 'postal_code']
@@ -133,15 +152,24 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Prepare the file for API request
         csv_data = df.to_csv(index=False).encode('windows-1251')
-        files = {"file": ("file.csv", csv_data)}
+        
+        # Create a proper multipart form data with the file
+        data = aiohttp.FormData()
+        data.add_field('file',
+                      csv_data,
+                      filename='file.csv',
+                      content_type='text/csv')
         
         # Make request to backend API
         async with aiohttp.ClientSession() as session:
-            async with session.post(f"{BACKEND_URL}/api/v1/predict/", data=files) as response:
+            async with session.post(f"{BACKEND_URL}/api/v1/predict/", data=data) as response:
                 if response.status == 200:
-                    # Get predictions
+                    # Get predictions - handle windows-1251 encoding
                     predictions_csv = await response.text()
-                    predictions_df = pd.read_csv(io.StringIO(predictions_csv))
+                    try:
+                        predictions_df = pd.read_csv(io.StringIO(predictions_csv), encoding='windows-1251')
+                    except UnicodeDecodeError:
+                        predictions_df = pd.read_csv(io.StringIO(predictions_csv), encoding='utf-8')
                     
                     # Update processing message with results
                     await processing_message.edit_text(
@@ -151,8 +179,8 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         "You can download the results using the button below."
                     )
                     
-                    # Send predictions file
-                    predictions_file = io.BytesIO(predictions_df.to_csv(index=False).encode('utf-8'))
+                    # Send predictions file - ensure windows-1251 encoding
+                    predictions_file = io.BytesIO(predictions_df.to_csv(index=False).encode('windows-1251'))
                     predictions_file.name = "predictions.csv"
                     await update.message.reply_document(
                         document=predictions_file,
@@ -168,11 +196,9 @@ async def handle_csv(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logger.error(f"Error processing CSV file: {str(e)}")
         await update.message.reply_text(
-            "Error processing your CSV file. Please ensure it's properly formatted "
-            "and contains all required columns."
+            f"Error processing your file:\n{str(e)}\n\n"
+            "Please make sure your CSV file is properly formatted and try again."
         )
-        if 'processing_message' in locals():
-            await processing_message.delete()
 
 def main():
     """Start the bot."""

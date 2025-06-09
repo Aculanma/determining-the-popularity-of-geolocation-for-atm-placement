@@ -1,11 +1,7 @@
-version: '3'
-
 services:
   backend:
     container_name: backend
-    build: 
-      context: .
-      dockerfile: backend/Dockerfile
+    image: hse-backend:1.0
     environment:
       BACKEND_PORT: "8080"
     restart: unless-stopped
@@ -31,13 +27,11 @@ services:
 
   bot:
     container_name: bot
-    build:
-      context: .
-      dockerfile: bot/Dockerfile
+    image: hse-bot:1.0
     environment:
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - BACKEND_HOST=backend
-      - BACKEND_PORT=8080
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      BACKEND_HOST: backend
+      BACKEND_PORT: "8080"
     restart: unless-stopped
     depends_on:
       - backend
