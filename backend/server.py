@@ -1,8 +1,8 @@
-from model import preprocess_data
+from model import create_model, preprocess_data
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
-from typing import List
+from typing import List, Literal
 import pandas as pd
 import pickle
 import os
@@ -21,17 +21,43 @@ log.basicConfig(handlers=(file_log, console_out),
 app = FastAPI()
 
 # Подгружаем модель и OneHotEncoder
-model_path = os.path.join(os.path.dirname(__file__), "resources/model_weights.pkl")
-with open(model_path, 'rb') as model_file:
-    loaded_model = pickle.load(model_file)
+linear_model = create_model(model_type="linear_model")
+# neural_model = create_model(model_type="neural_network")
+active_model = linear_model
 
 ohe_path = os.path.join(os.path.dirname(__file__), "resources/onehotencoder.pkl")
 with open(ohe_path, 'rb') as ohe_file:
     ohe = pickle.load(ohe_file)
 
+class ModelType(BaseModel):
+    model_type: Literal["linear_model", "neural_network"]
+
 @app.get("/api/v1/healthcheck/")
 def healthcheck():
     return 'Health - OK'
+
+@app.post("/api/v1/change_model/")
+async def change_model(model_data: ModelType):
+    """
+    Change the active model for predictions.
+    
+    Args:
+        model_data: ModelType object containing the model type to switch to
+        
+    Returns:
+        dict: Status message with the new active model type
+        
+    Raises:
+        HTTPException: If there's an error loading the model
+    """
+    global active_model
+    try:
+        active_model = create_model(model_type=model_data.model_type)
+        log.info(f"Successfully switched to {model_data.model_type} model")
+        return {"status": "success", "message": f"Model changed to {model_data.model_type}"}
+    except Exception as e:
+        log.error(f"Error changing model: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error changing model: {str(e)}")
 
 @app.post("/api/v1/predict/")
 async def predict(file: UploadFile = File(...)) -> StreamingResponse:
@@ -54,7 +80,7 @@ async def predict(file: UploadFile = File(...)) -> StreamingResponse:
         log.debug("Data processed")
 
         # Предсказания
-        predictions = loaded_model.predict(processed_data)
+        predictions = active_model.predict(processed_data)
         df['predicted_index'] = predictions
         log.info("Predictions = [%s]", predictions)
 
